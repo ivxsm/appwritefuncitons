@@ -145,7 +145,13 @@ module.exports = async ({ req, res, log, error: logError }) => {
       bucketExports,
       fileId,
       InputFile.fromBuffer(outBuffer, fileName),
-      [Permission.read(Role.user(userId))],
+      [
+        // File-level security requires explicit "create" on the new object (not only read/update/delete).
+        Permission.create(Role.user(userId)),
+        Permission.read(Role.user(userId)),
+        Permission.update(Role.user(userId)),
+        Permission.delete(Role.user(userId)),
+      ],
     );
     return res.json({
       ok: true,
@@ -153,7 +159,18 @@ module.exports = async ({ req, res, log, error: logError }) => {
       bucketId: bucketExports,
     });
   } catch (e) {
-    logError(String(e && e.message ? e.message : e));
-    return res.json({ ok: false, error: "Failed to save export", status: 500 });
+    const msg = e && e.message ? String(e.message) : String(e);
+    const code = e && typeof e.code === "number" ? e.code : undefined;
+    const type = e && e.type ? String(e.type) : undefined;
+    logError(`createFile: ${msg} code=${code} type=${type}`);
+    return res.json({
+      ok: false,
+      error: "Failed to save export",
+      detail: msg,
+      code,
+      type,
+      hint:
+        "Usually: exports bucket missing Create for Users, file size over bucket limit, or PNG not in allowed extensions. Check Appwrite → Storage → exports → Settings.",
+    });
   }
 };
