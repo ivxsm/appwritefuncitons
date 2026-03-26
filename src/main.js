@@ -141,17 +141,13 @@ module.exports = async ({ req, res, log, error: logError }) => {
   const fileName = `export-${Date.now()}.png`;
 
   try {
+    // Storage files only allow read | update | delete | write | null — not "create".
+    // `write` is the role that covers creating/updating/deleting the file for this user.
     const created = await storage.createFile(
       bucketExports,
       fileId,
       InputFile.fromBuffer(outBuffer, fileName),
-      [
-        // File-level security requires explicit "create" on the new object (not only read/update/delete).
-        Permission.create(Role.user(userId)),
-        Permission.read(Role.user(userId)),
-        Permission.update(Role.user(userId)),
-        Permission.delete(Role.user(userId)),
-      ],
+      [Permission.write(Role.user(userId))],
     );
     return res.json({
       ok: true,
