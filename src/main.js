@@ -52,6 +52,8 @@ module.exports = async ({ req, res, log, error: logError }) => {
   const lat = Number(payload.lat);
   const lng = Number(payload.lng);
   let zoom = Number(payload.zoom);
+  let bearing = Number(payload.bearing);
+  let pitch = Number(payload.pitch);
   let width = Math.min(1280, Math.max(64, Math.round(Number(payload.width) || 1200)));
   let height = Math.min(1280, Math.max(64, Math.round(Number(payload.height) || 800)));
   const maximizeStaticSize = payload.maximizeStaticSize !== false;
@@ -77,6 +79,12 @@ module.exports = async ({ req, res, log, error: logError }) => {
   if (!Number.isFinite(zoom)) zoom = 14;
   zoom = Math.min(22, Math.max(0, zoom));
   const z = Math.round(zoom * 100) / 100;
+  if (!Number.isFinite(bearing)) bearing = 0;
+  bearing = ((bearing % 360) + 360) % 360;
+  const b = Math.round(bearing * 10) / 10;
+  if (!Number.isFinite(pitch)) pitch = 0;
+  pitch = Math.min(60, Math.max(0, pitch));
+  const p = Math.round(pitch * 10) / 10;
   const hasPin =
     Number.isFinite(pinLat) &&
     Number.isFinite(pinLng) &&
@@ -85,7 +93,7 @@ module.exports = async ({ req, res, log, error: logError }) => {
 
   // Center + zoom + dimensions (Mapbox may round zoom to 2 decimals). No bbox — bbox mode recomputes zoom to fit the box.
   const overlay = hasPin ? `pin-s+047857(${pinLng},${pinLat})/` : "";
-  const staticSegment = `${overlay}${lng},${lat},${z},0,0/${width}x${height}@2x`;
+  const staticSegment = `${overlay}${lng},${lat},${z},${b},${p}/${width}x${height}@2x`;
   const mapUrl =
     "https://api.mapbox.com/styles/v1/" +
     stylePath +
