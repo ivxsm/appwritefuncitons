@@ -75,12 +75,8 @@ module.exports = async ({ req, res, log, error: logError }) => {
   // Center + zoom + dimensions (Mapbox may round zoom to 2 decimals). No bbox — bbox mode recomputes zoom to fit the box.
   const staticSegment = `${lng},${lat},${z},0,0/${width}x${height}@2x`;
   const mapUrl =
-    "https://api.mapbox.com/styles/v1/" +
-    stylePath +
-    "/static/" +
-    staticSegment +
-    "?access_token=" +
-    encodeURIComponent(mapboxToken);
+    `https://api.mapbox.com/styles/v1/${stylePath}/static/${staticSegment}` +
+    `?addlayerlabels=true&access_token=${encodeURIComponent(mapboxToken)}`;
 
   let mapBuffer;
   try {
