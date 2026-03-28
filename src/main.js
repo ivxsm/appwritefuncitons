@@ -37,7 +37,6 @@ module.exports = async ({ req, res, log, error: logError }) => {
   const endpoint = process.env.APPWRITE_ENDPOINT;
   const projectId = process.env.APPWRITE_FUNCTION_PROJECT_ID;
   const mapboxToken = process.env.MAPBOX_SECRET_TOKEN;
-  const bucketLogos = process.env.BUCKET_LOGOS;
   const bucketExports = process.env.BUCKET_EXPORTS;
 
   if (!endpoint || !projectId || !mapboxToken || !bucketExports) {
@@ -68,10 +67,8 @@ module.exports = async ({ req, res, log, error: logError }) => {
     typeof payload.stylePath === "string" && payload.stylePath.length > 0
       ? payload.stylePath
       : "mapbox/streets-v12";
-  const logoFileId =
-    typeof payload.logoFileId === "string" && payload.logoFileId.length > 0
-      ? payload.logoFileId
-      : null;
+  const pinLat = Number(payload.pinLat);
+  const pinLng = Number(payload.pinLng);
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     return res.json({ ok: false, error: "Invalid coordinates", status: 400 });
@@ -80,9 +77,15 @@ module.exports = async ({ req, res, log, error: logError }) => {
   if (!Number.isFinite(zoom)) zoom = 14;
   zoom = Math.min(22, Math.max(0, zoom));
   const z = Math.round(zoom * 100) / 100;
+  const hasPin =
+    Number.isFinite(pinLat) &&
+    Number.isFinite(pinLng) &&
+    Math.abs(pinLat) <= 90 &&
+    Math.abs(pinLng) <= 180;
 
   // Center + zoom + dimensions (Mapbox may round zoom to 2 decimals). No bbox — bbox mode recomputes zoom to fit the box.
-  const staticSegment = `${lng},${lat},${z},0,0/${width}x${height}@2x`;
+  const overlay = hasPin ? `pin-s+047857(${pinLng},${pinLat})/` : "";
+  const staticSegment = `${overlay}${lng},${lat},${z},0,0/${width}x${height}@2x`;
   const mapUrl =
     "https://api.mapbox.com/styles/v1/" +
     stylePath +
@@ -105,59 +108,6 @@ module.exports = async ({ req, res, log, error: logError }) => {
     return res.json({ ok: false, error: "Map fetch failed", status: 502 });
   }
 
-  let outBuffer = mapBuffer;
-
-  if (logoFileId && bucketLogos) {
-    let sharp;
-    try {
-      sharp = require("sharp");
-    } catch (sharpLoadErr) {
-      logError("sharp module failed to load (logo skipped): " + String(sharpLoadErr && sharpLoadErr.message));
-    }
-    try {
-      const downloadUrl = `${endpoint}/storage/buckets/${bucketLogos}/files/${logoFileId}/download`;
-      const logoRes = await fetch(downloadUrl, {
-        headers: {
-          "X-Appwrite-Project": projectId,
-          "X-Appwrite-JWT": jwt,
-        },
-      });
-      if (!logoRes.ok) {
-        log(`Logo download failed ${logoRes.status}, exporting map without logo`);
-      } else if (!sharp) {
-        log("Logo present but sharp unavailable; exporting map without logo");
-      } else {
-        const logoBuf = Buffer.from(await logoRes.arrayBuffer());
-        const base = sharp(mapBuffer);
-        const meta = await base.metadata();
-        const w = meta.width || width * 2;
-        const h = meta.height || height * 2;
-        const targetLogoW = Math.round(w * 0.14);
-        const logoPng = await sharp(logoBuf)
-          .resize({ width: targetLogoW, height: targetLogoW, fit: "inside" })
-          .png()
-          .toBuffer();
-        const lm = await sharp(logoPng).metadata();
-        const lw = lm.width || targetLogoW;
-        const lh = lm.height || targetLogoW;
-        const margin = Math.round(w * 0.04);
-        outBuffer = await base
-          .composite([
-            {
-              input: logoPng,
-              left: Math.max(0, w - lw - margin),
-              top: Math.max(0, h - lh - margin),
-            },
-          ])
-          .png()
-          .toBuffer();
-      }
-    } catch (e) {
-      logError(`Logo composite error: ${String(e)}`);
-      outBuffer = mapBuffer;
-    }
-  }
-
   const client = new Client().setEndpoint(endpoint).setProject(projectId).setJWT(jwt);
   const storage = new Storage(client);
 
@@ -170,7 +120,7 @@ module.exports = async ({ req, res, log, error: logError }) => {
     const created = await storage.createFile(
       bucketExports,
       fileId,
-      InputFile.fromBuffer(outBuffer, fileName),
+      InputFile.fromBuffer(mapBuffer, fileName),
       [Permission.write(Role.user(userId))],
     );
     return res.json({
