@@ -53,8 +53,17 @@ module.exports = async ({ req, res, log, error: logError }) => {
   const lat = Number(payload.lat);
   const lng = Number(payload.lng);
   let zoom = Number(payload.zoom);
-  const width = Math.min(1280, Math.max(64, Math.round(Number(payload.width) || 1200)));
-  const height = Math.min(1280, Math.max(64, Math.round(Number(payload.height) || 800)));
+  let width = Math.min(1280, Math.max(64, Math.round(Number(payload.width) || 1200)));
+  let height = Math.min(1280, Math.max(64, Math.round(Number(payload.height) || 800)));
+  const maximizeStaticSize = payload.maximizeStaticSize !== false;
+  if (maximizeStaticSize) {
+    const m = Math.max(width, height);
+    if (m > 0 && m < 1280) {
+      const s = 1280 / m;
+      width = Math.min(1280, Math.max(64, Math.round(width * s)));
+      height = Math.min(1280, Math.max(64, Math.round(height * s)));
+    }
+  }
   const stylePath =
     typeof payload.stylePath === "string" && payload.stylePath.length > 0
       ? payload.stylePath
@@ -75,8 +84,12 @@ module.exports = async ({ req, res, log, error: logError }) => {
   // Center + zoom + dimensions (Mapbox may round zoom to 2 decimals). No bbox — bbox mode recomputes zoom to fit the box.
   const staticSegment = `${lng},${lat},${z},0,0/${width}x${height}@2x`;
   const mapUrl =
-    `https://api.mapbox.com/styles/v1/${stylePath}/static/${staticSegment}` +
-    `?addlayerlabels=true&access_token=${encodeURIComponent(mapboxToken)}`;
+    "https://api.mapbox.com/styles/v1/" +
+    stylePath +
+    "/static/" +
+    staticSegment +
+    "?addlayerlabels=true&access_token=" +
+    encodeURIComponent(mapboxToken);
 
   let mapBuffer;
   try {
