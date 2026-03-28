@@ -70,39 +70,17 @@ module.exports = async ({ req, res, log, error: logError }) => {
 
   if (!Number.isFinite(zoom)) zoom = 14;
   zoom = Math.min(22, Math.max(0, zoom));
+  const z = Math.round(zoom * 100) / 100;
 
-  const b = payload.bounds;
-  const hasBbox =
-    b &&
-    typeof b === "object" &&
-    [b.west, b.south, b.east, b.north].every((n) => Number.isFinite(Number(n))) &&
-    Number(b.west) < Number(b.east) &&
-    Number(b.south) < Number(b.north);
-
-  let staticSegment;
-  if (hasBbox) {
-    const r = (x) => Math.round(Number(x) * 1e6) / 1e6;
-    const w = r(b.west);
-    const s = r(b.south);
-    const e = r(b.east);
-    const n = r(b.north);
-    // [minLng, minLat, maxLng, maxLat] — matches visible studio map + export aspect ratio → street labels align with GL preview.
-    staticSegment = `[${w},${s},${e},${n}]/${width}x${height}@2x`;
-  } else {
-    staticSegment = `${lng},${lat},${zoom},0,0/${width}x${height}@2x`;
-  }
-
-  // Avoid URLSearchParams — some Appwrite / Node sandboxes throw while loading modules that use it.
-  let mapUrl =
+  // Center + zoom + dimensions (Mapbox may round zoom to 2 decimals). No bbox — bbox mode recomputes zoom to fit the box.
+  const staticSegment = `${lng},${lat},${z},0,0/${width}x${height}@2x`;
+  const mapUrl =
     "https://api.mapbox.com/styles/v1/" +
     stylePath +
     "/static/" +
     staticSegment +
     "?access_token=" +
     encodeURIComponent(mapboxToken);
-  if (hasBbox) {
-    mapUrl += "&padding=10";
-  }
 
   let mapBuffer;
   try {
